@@ -24,6 +24,7 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
+static struct list sleep_list;
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -37,6 +38,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  list_init (&sleep_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -63,7 +65,7 @@ timer_calibrate (void)
     if (!too_many_loops (loops_per_tick | test_bit))
       loops_per_tick |= test_bit;
 
-  printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
+  printf ("%"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
 /* Returns the number of timer ticks since the OS booted. */
@@ -92,8 +94,18 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+
+  list_push_back(&sleep_list, &thread_current()->elem);
+  
+  if (list_size(&sleep_list) > 1) {
+    thread_block();
+  }
+
+  while (timer_elapsed (start) < ticks) thread_yield ();
+
+  list_pop_front(&sleep_list);
+
+  thread_unblock(list_entry(list_front(&sleep_list), struct thread, elem));
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be

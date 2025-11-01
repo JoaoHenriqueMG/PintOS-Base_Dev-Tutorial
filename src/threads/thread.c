@@ -214,11 +214,15 @@ thread_create (const char *name, int priority,
 void
 thread_block (void) 
 {
+  struct thread *cur = thread_current ();
+  enum intr_level old_level;
+  
   ASSERT (!intr_context ());
-  ASSERT (intr_get_level () == INTR_OFF);
 
-  thread_current ()->status = THREAD_BLOCKED;
+  old_level = intr_disable ();
+  cur->status = THREAD_BLOCKED;
   schedule ();
+  intr_set_level (old_level);
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
