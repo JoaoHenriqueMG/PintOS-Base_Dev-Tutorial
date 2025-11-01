@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -21,6 +22,8 @@
 #define THREAD_MAGIC 0xcd6abf4b
 #define A 55
 
+static struct list sleep_list;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -37,6 +40,11 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+
+struct thread_time {
+  struct thread *thread;
+  int64_t wakeup_time;
+};
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -205,6 +213,16 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
+void
+timer_block(int time) {
+  struct thread_time tt;
+  struct thread *cur = thread_current();
+  tt.thread = cur;
+  tt.wakeup_time = time;
+  list_push_back(&sleep_list, &tt.thread->elem);
+  thread_block();
+}
+
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -214,15 +232,11 @@ thread_create (const char *name, int priority,
 void
 thread_block (void) 
 {
-  struct thread *cur = thread_current ();
-  enum intr_level old_level;
-  
   ASSERT (!intr_context ());
+  ASSERT (intr_get_level () == INTR_OFF);
 
-  old_level = intr_disable ();
-  cur->status = THREAD_BLOCKED;
+  thread_current ()->status = THREAD_BLOCKED;
   schedule ();
-  intr_set_level (old_level);
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
@@ -562,11 +576,19 @@ schedule (void)
   struct thread *prev = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);
-  /* TODO:
-   * Ver de usar o thread_block, mas para o schedule 
-   * tem de verificar se uma thread esta bloqueada, alem de implementar 
-   * o unblock com o tempo
-   * */
+
+  struct list_elem *temp = list_begin(&sleep_list);
+  for (unsigned int i = 0; i < list_size(&sleep_list); i++) {
+    struct thread_time *tt = list_entry (temp, struct thread_time, thread->elem);
+    if (tt->wakeup_time <= timer_ticks()) {
+      list_remove(temp);
+      thread_unblock(tt->thread);
+    } else {
+      temp = list_next(temp);
+      if (i == list_size(&sleep_list)) tt = NULL;
+    }
+  }
+
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));
 
