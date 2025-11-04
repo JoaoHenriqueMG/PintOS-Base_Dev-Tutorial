@@ -55,12 +55,15 @@ struct kernel_thread_frame
   };
 
 /* Statistics. */
+
+static long long system_ticks;
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
+
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
 /* If false (default), use round-robin scheduler.
@@ -132,7 +135,7 @@ void
 thread_tick (void) 
 {
   struct thread *t = thread_current ();
-
+  system_ticks++;
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -215,12 +218,18 @@ thread_create (const char *name, int priority,
 
 void
 timer_block(int time) {
-  struct thread_time tt;
   struct thread *cur = thread_current();
+  struct thread_time tt;
+  enum intr_level old_level;
+
+  ASSERT(cur->status == THREAD_RUNNING);
+
+  old_level = intr_disable ();
   tt.thread = cur;
-  tt.wakeup_time = time;
+  tt.wakeup_time = system_ticks + time;
   list_push_back(&sleep_list, &tt.thread->elem);
   thread_block();
+  intr_set_level (old_level);
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -577,15 +586,17 @@ schedule (void)
 
   ASSERT (intr_get_level () == INTR_OFF);
 
-  struct list_elem *temp = list_begin(&sleep_list);
-  for (unsigned int i = 0; i < list_size(&sleep_list); i++) {
-    struct thread_time *tt = list_entry (temp, struct thread_time, thread->elem);
-    if (tt->wakeup_time <= timer_ticks()) {
-      list_remove(temp);
-      thread_unblock(tt->thread);
-    } else {
-      temp = list_next(temp);
-      if (i == list_size(&sleep_list)) tt = NULL;
+  if (!list_empty(&sleep_list)) {
+    struct list_elem *temp = list_begin(&sleep_list);
+    struct list_elem *next_temp = NULL;
+    while (temp != list_end(&sleep_list)) {
+      struct thread_time *tt = list_entry (temp, struct thread_time, thread->elem);
+      next_temp = list_next(temp);
+      if (tt->wakeup_time <= system_ticks) {
+        list_remove(temp);
+        thread_unblock(tt->thread);
+      }
+      temp = next_temp;
     }
   }
 
