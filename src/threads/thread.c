@@ -51,7 +51,7 @@ struct kernel_thread_frame
 
 /* Statistics. */
 
-static long long system_ticks;
+static long long system_ticks;  /* # of timer ticks since init. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
@@ -154,7 +154,6 @@ thread_tick (void)
 {
   struct thread *t = thread_current ();
   system_ticks++;
-  thread_wakeup();
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -273,13 +272,20 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+
+bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
+  struct thread *ta = list_entry(a, struct thread, elem);
+  struct thread *tb = list_entry(b, struct thread, elem);
+  return ta->priority > tb->priority;
+}
+
 void
 thread_unblock (struct thread *t) 
 {
   ASSERT (is_thread (t));
 
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered (&ready_list, &t->elem, thread_priority_less_func, NULL);
   t->status = THREAD_READY;
 }
 
@@ -598,6 +604,8 @@ schedule (void)
   struct thread *prev = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);
+
+  thread_wakeup();
 
   next = next_thread_to_run();
 
