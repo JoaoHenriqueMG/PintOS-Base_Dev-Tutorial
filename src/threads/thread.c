@@ -41,11 +41,6 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
-struct thread_time {
-  struct thread *thread;
-  int64_t wakeup_time;
-};
-
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
   {
@@ -101,15 +96,24 @@ thread_init (void)
 {
   ASSERT (intr_get_level () == INTR_OFF);
 
+  system_ticks = 0;
+
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+}
+
+bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux) {
+  struct thread *ta = list_entry(a, struct thread, elem);
+  struct thread *tb = list_entry(b, struct thread, elem);
+  return ta->wakeup_time < tb->wakeup_time;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -129,6 +133,20 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
+void thread_wakeup () {
+
+  while (!list_empty(&sleep_list)) {
+    struct list_elem *temp = list_begin(&sleep_list);
+    struct thread *t = list_entry (temp, struct thread, elem);
+    if (t->wakeup_time <= system_ticks) {
+      list_remove(temp);
+      thread_unblock(t);
+    } else {
+      break;
+    } 
+  }
+}
+
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
@@ -136,6 +154,7 @@ thread_tick (void)
 {
   struct thread *t = thread_current ();
   system_ticks++;
+  thread_wakeup();
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -217,17 +236,15 @@ thread_create (const char *name, int priority,
 }
 
 void
-timer_block(int time) {
+timer_block(int64_t wakeup_time) {
   struct thread *cur = thread_current();
-  struct thread_time tt;
   enum intr_level old_level;
 
-  ASSERT(cur->status == THREAD_RUNNING);
+  ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  tt.thread = cur;
-  tt.wakeup_time = system_ticks + time;
-  list_push_back(&sleep_list, &tt.thread->elem);
+  cur->wakeup_time = system_ticks + wakeup_time;
+  list_insert_ordered(&sleep_list, &cur->elem, thread_wakeup_less_func, NULL);
   thread_block();
   intr_set_level (old_level);
 }
@@ -259,15 +276,11 @@ thread_block (void)
 void
 thread_unblock (struct thread *t) 
 {
-  enum intr_level old_level;
-
   ASSERT (is_thread (t));
 
-  old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
-  intr_set_level (old_level);
 }
 
 /* Returns the name of the running thread. */
@@ -581,24 +594,12 @@ static void
 schedule (void) 
 {
   struct thread *cur = running_thread ();
-  struct thread *next = next_thread_to_run ();
+  struct thread *next;
   struct thread *prev = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);
 
-  if (!list_empty(&sleep_list)) {
-    struct list_elem *temp = list_begin(&sleep_list);
-    struct list_elem *next_temp = NULL;
-    while (temp != list_end(&sleep_list)) {
-      struct thread_time *tt = list_entry (temp, struct thread_time, thread->elem);
-      next_temp = list_next(temp);
-      if (tt->wakeup_time <= system_ticks) {
-        list_remove(temp);
-        thread_unblock(tt->thread);
-      }
-      temp = next_temp;
-    }
-  }
+  next = next_thread_to_run();
 
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));

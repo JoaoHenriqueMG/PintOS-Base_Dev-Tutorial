@@ -92,7 +92,7 @@ void
 timer_sleep (int64_t ticks) 
 {
   ASSERT (intr_get_level () == INTR_ON);
-  timer_block(timer_ticks() + ticks);
+  timer_block(ticks);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
