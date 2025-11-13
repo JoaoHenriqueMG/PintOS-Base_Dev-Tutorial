@@ -78,6 +78,11 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+// the news methods implemented below
+
+
+
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -110,9 +115,11 @@ thread_init (void)
   initial_thread->tid = allocate_tid ();
 }
 
+//////////////////////////////////////////////////
 bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux) {
   struct thread *ta = list_entry(a, struct thread, elem);
   struct thread *tb = list_entry(b, struct thread, elem);
+  
   return ta->wakeup_time < tb->wakeup_time;
 }
 
@@ -133,16 +140,17 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
+//////////////////////////////////////////////////
 void thread_wakeup () {
-
   while (!list_empty(&sleep_list)) {
     struct list_elem *temp = list_begin(&sleep_list);
     struct thread *t = list_entry (temp, struct thread, elem);
-    if (t->wakeup_time <= system_ticks) {
+    
+    if (t->wakeup_time > system_ticks)
+      break;
+    else {
       list_remove(temp);
       thread_unblock(t);
-    } else {
-      break;
     } 
   }
 }
@@ -234,18 +242,20 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
-void
-timer_block(int64_t wakeup_time) {
+////////////////////////////////////////////////// put in timer.c
+void timer_block(int64_t wakeup_time) {
   struct thread *cur = thread_current();
   enum intr_level old_level;
 
-  ASSERT (!intr_context ());
+  ASSERT (!intr_context());
 
-  old_level = intr_disable ();
+  old_level = intr_disable();
   cur->wakeup_time = system_ticks + wakeup_time;
+  
   list_insert_ordered(&sleep_list, &cur->elem, thread_wakeup_less_func, NULL);
   thread_block();
-  intr_set_level (old_level);
+  
+  intr_set_level(old_level);
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -273,19 +283,22 @@ thread_block (void)
    it may expect that it can atomically unblock a thread and
    update other data. */
 
+//////////////////////////////////////////////////
 bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
   struct thread *ta = list_entry(a, struct thread, elem);
   struct thread *tb = list_entry(b, struct thread, elem);
+  
   return ta->priority > tb->priority;
 }
 
-void
-thread_unblock (struct thread *t) 
+//////////////////////////////////////////////////
+void thread_unblock (struct thread *t) 
 {
-  ASSERT (is_thread (t));
-
+  ASSERT (is_thread(t));
   ASSERT (t->status == THREAD_BLOCKED);
-  list_insert_ordered (&ready_list, &t->elem, thread_priority_less_func, NULL);
+  
+  list_insert_ordered(&ready_list, &t->elem, thread_priority_less_func, NULL);
+  
   t->status = THREAD_READY;
 }
 
@@ -393,31 +406,49 @@ thread_get_priority (void)
 }
 
 /* Sets the current thread's nice value to NICE. */
-void
-thread_set_nice (int nice UNUSED) 
-{
-  /* Not yet implemented. */
+void thread_set_nice (int nice) {
+  struct thread *cur = thread_current();
+  enum intr_level old_level;
+  
+  ASSERT (!intr_context());
+  
+  old_level = intr_disable();
+
+  if (nice < -20)
+    nice = -20;
+  else if (nice > 20)
+    nice = 20;
+  
+  cur->nice = nice;
+  
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's nice value. */
-int
-thread_get_nice (void) 
-{
-  /* Not yet implemented. */
-  return 0;
+int thread_get_nice (void) {
+  struct thread *cur = thread_current();
+  enum intr_level old_level;
+
+  ASSERT (!intr_context());
+
+  old_level = intr_disable();
+
+  int nice = cur->nice;
+
+  intr_set_level(old_level);
+
+  return nice;
 }
 
 /* Returns 100 times the system load average. */
-int
-thread_get_load_avg (void) 
+int thread_get_load_avg (void) 
 {
   /* Not yet implemented. */
   return 0;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
-int
-thread_get_recent_cpu (void) 
+int thread_get_recent_cpu (void) 
 {
   /* Not yet implemented. */
   return 0;
@@ -605,7 +636,7 @@ schedule (void)
 
   ASSERT (intr_get_level () == INTR_OFF);
 
-  thread_wakeup();
+  thread_wakeup(); // new 
 
   next = next_thread_to_run();
 
