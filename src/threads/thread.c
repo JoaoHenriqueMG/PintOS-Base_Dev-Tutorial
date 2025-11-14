@@ -61,6 +61,8 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+static long long avg_load;
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
@@ -80,7 +82,18 @@ static tid_t allocate_tid (void);
 
 // the news methods implemented below
 
+void timer_block(int64_t time);
+void thread_wakeup();
 
+bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux);
+
+void mlfqs_update_recent_cpu_cur();
+void mlfqs_update_recent_cpu(struct thread *t, void *aux UNUSED);
+void mlfqs_update_recent_cpu_all();
+void mlfqs_update_load_avg();
+void mlfqs_update_priority(struct thread *t, void *aux UNUSED);
+void mlfqs_update_priorities();
 
 
 /* Initializes the threading system by transforming the code
@@ -102,6 +115,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   system_ticks = 0;
+  avg_load = 0;
 
   lock_init (&tid_lock);
   list_init (&ready_list);
@@ -242,7 +256,7 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
-////////////////////////////////////////////////// put in timer.c
+//////////////////////////////////////////////////
 void timer_block(int64_t wakeup_time) {
   struct thread *cur = thread_current();
   enum intr_level old_level;
@@ -250,9 +264,11 @@ void timer_block(int64_t wakeup_time) {
   ASSERT (!intr_context());
 
   old_level = intr_disable();
+  
   cur->wakeup_time = system_ticks + wakeup_time;
   
   list_insert_ordered(&sleep_list, &cur->elem, thread_wakeup_less_func, NULL);
+  
   thread_block();
   
   intr_set_level(old_level);
@@ -301,6 +317,71 @@ void thread_unblock (struct thread *t)
   
   t->status = THREAD_READY;
 }
+
+void mlfqs_update_recent_cpu_cur() {
+  struct thread *cur = thread_current();
+  
+  if (cur != idle_thread)
+    cur->cpu_recent_time += 1;
+}
+
+void mlfqs_update_recent_cpu (struct thread *t, void *aux UNUSED) {
+  if (t != idle_thread) {
+    // recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice
+    int load_avg_mult_2 = avg_load * 2;
+    int coefficient = load_avg_mult_2 / (load_avg_mult_2 + 1);
+    
+    t->cpu_recent_time = 100 * (coefficient * t->cpu_recent_time + t->nice);
+  }
+}
+
+void mlfqs_update_recent_cpu_all () {
+  enum intr_level old = intr_disable();
+  
+  thread_foreach(mlfqs_update_recent_cpu, NULL);
+  
+  intr_set_level(old);
+}
+
+void mlfqs_update_load_avg () {
+  struct thread *cur = thread_current();
+
+  int ready_threads = list_size(&ready_list);  
+  
+  if (cur != idle_thread)
+    ready_threads += 1;
+  
+  // load_avg = (59/60)*load_avg + (1/60)*ready_threads
+  avg_load = (59 * avg_load + ready_threads) / 60;
+}
+
+void mlfqs_update_priority (struct thread *t, void *aux UNUSED) {
+  if (t != idle_thread) {
+    // priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
+    int new_priority = PRI_MAX - (t->cpu_recent_time / 400) - (t->nice * 2);
+    
+    if (new_priority > PRI_MAX)
+      new_priority = PRI_MAX;
+    else if (new_priority < PRI_MIN)
+      new_priority = PRI_MIN;
+    
+    t->priority = new_priority;
+  }
+}
+
+void mlfqs_update_priorities () {
+  enum intr_level old = intr_disable();
+  
+  thread_foreach(mlfqs_update_priority, NULL);
+  
+  intr_set_level(old);
+}
+
+
+
+
+
+
 
 /* Returns the name of the running thread. */
 const char *
@@ -443,15 +524,37 @@ int thread_get_nice (void) {
 /* Returns 100 times the system load average. */
 int thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  struct thread *cur = thread_current();
+  
+  enum intr_level old_level;
+  
+  ASSERT (!intr_context());
+  
+  old_level = intr_disable();
+  
+  int load_avg_100 = avg_load * 100;
+  
+  intr_set_level(old_level);
+  
+  return load_avg_100;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  struct thread *cur = thread_current();
+  
+  enum intr_level old_level;
+  
+  ASSERT (!intr_context());
+  
+  old_level = intr_disable();
+  
+  int recent_cpu_100 = cur->cpu_recent_time * 100;
+  
+  intr_set_level(old_level);
+  
+  return recent_cpu_100;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -540,6 +643,18 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  
+  if (thread_mlfqs)
+    if (t == initial_thread) {
+      t->nice = 0;
+      t->cpu_recent_time = 0;
+    }
+    else {
+      struct thread *cur = thread_current();
+      t->nice = cur->nice;
+      t->cpu_recent_time = cur->cpu_recent_time;
+    }
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
