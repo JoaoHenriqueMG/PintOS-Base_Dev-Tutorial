@@ -21,6 +21,7 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 #define A 55
+#define TIMER_FREQ 100
 
 static struct list sleep_list;
 
@@ -176,6 +177,19 @@ thread_tick (void)
   struct thread *t = thread_current ();
   system_ticks++;
 
+  if (thread_mlfqs) {    
+    mlfqs_update_recent_cpu_cur();
+    // Every second
+    if (system_ticks % TIMER_FREQ == 0) {
+      mlfqs_update_load_avg();
+      mlfqs_update_recent_cpu_all(); //thread_foreach(thread_update_recent_cpu_cur, NULL);
+    }
+    if (system_ticks % 4 == 0) {
+      mlfqs_update_priorities();
+      list_sort(&ready_list, thread_priority_less_func, NULL);
+    }
+  }
+
   /* Update statistics. */
   if (t == idle_thread)
     idle_ticks++;
@@ -186,9 +200,12 @@ thread_tick (void)
   else
     kernel_ticks++;
 
+  thread_wakeup(); // new
+
   /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
+  if (++thread_ticks >= TIME_SLICE || t->priority < list_entry(list_begin(&ready_list), struct thread, elem)->priority)
     intr_yield_on_return ();
+
 }
 
 /* Prints thread statistics. */
@@ -335,11 +352,7 @@ void mlfqs_update_recent_cpu (struct thread *t, void *aux UNUSED) {
 }
 
 void mlfqs_update_recent_cpu_all () {
-  enum intr_level old = intr_disable();
-  
   thread_foreach(mlfqs_update_recent_cpu, NULL);
-  
-  intr_set_level(old);
 }
 
 void mlfqs_update_load_avg () {
@@ -366,17 +379,12 @@ void mlfqs_update_priority (struct thread *t, void *aux UNUSED) {
       new_priority = PRI_MAX;
     else if (new_priority < PRI_MIN)
       new_priority = PRI_MIN;
-    
     t->priority = new_priority;
   }
 }
 
 void mlfqs_update_priorities () {
-  enum intr_level old = intr_disable();
-  
   thread_foreach(mlfqs_update_priority, NULL);
-  
-  intr_set_level(old);
 }
 
 
@@ -445,7 +453,7 @@ void
 thread_yield (void) 
 {
   struct thread *cur = thread_current ();
-  enum intr_level old_level;o
+  enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
@@ -511,11 +519,8 @@ void thread_set_nice (int nice) {
   if (!list_empty(&ready_list)) {
     if (cur->priority < list_entry(list_begin(&ready_list), struct thread, elem)->priority) yield_needed = true; 
   }
-
-  intr_set_level(old_level);
-
   if (yield_needed) thread_yield();
-
+  intr_set_level(old_level);
 }
 
 /* Returns the current thread's nice value. */
@@ -763,8 +768,6 @@ schedule (void)
   struct thread *prev = NULL;
 
   ASSERT (intr_get_level () == INTR_OFF);
-
-  thread_wakeup(); // new 
 
   next = next_thread_to_run();
 

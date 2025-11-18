@@ -109,18 +109,23 @@ void
 sema_up (struct semaphore *sema) 
 {
   enum intr_level old_level;
+  bool yielding = false;
 
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+  if (!list_empty (&sema->waiters)) {
+    struct thread *t = list_entry (list_pop_front (&sema->waiters), struct thread, elem);
+    thread_unblock (t);
+    if (thread_mlfqs && t->priority > thread_current()->priority) yielding = true;
+  }
   sema->value++;
   intr_set_level (old_level);
+  if (yielding) thread_yield();
+
 }
 
-static void sema_test_helper (void *sema_);
+static void sema_test_helper (void *sema_);g
 
 /* Self-test for semaphores that makes control "ping-pong"
    between a pair of threads.  Insert calls to printf() to see
