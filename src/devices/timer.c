@@ -180,9 +180,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
       mlfqs_update_recent_cpu_all(); //thread_foreach(thread_update_recent_cpu_cur, NULL);
     }
 
-    if (ticks % 4 == 0) {
+    if (ticks % 4 == 0)
       mlfqs_update_priorities();
-    }
   }
 }
 

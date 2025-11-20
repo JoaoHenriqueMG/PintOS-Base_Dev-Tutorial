@@ -130,14 +130,6 @@ thread_init (void)
   initial_thread->tid = allocate_tid ();
 }
 
-//////////////////////////////////////////////////
-bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux) {
-  struct thread *ta = list_entry(a, struct thread, elem);
-  struct thread *tb = list_entry(b, struct thread, elem);
-  
-  return ta->wakeup_time < tb->wakeup_time;
-}
-
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
 void
@@ -155,19 +147,7 @@ thread_start (void)
   sema_down (&idle_started);
 }
 
-//////////////////////////////////////////////////
-void thread_wakeup () {
-  while (!list_empty(&sleep_list)) {
-    struct list_elem *temp = list_begin(&sleep_list);
-    struct thread *t = list_entry (temp, struct thread, elem);
-    if (t->wakeup_time > system_ticks)
-      break;
-    else {
-      list_remove(temp);
-      thread_unblock(t);
-    } 
-  }
-}
+
 
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
@@ -177,18 +157,7 @@ thread_tick (void)
   struct thread *t = thread_current ();
   system_ticks++;
 
-  if (thread_mlfqs) {    
-    mlfqs_update_recent_cpu_cur();
-    // Every second
-    if (system_ticks % TIMER_FREQ == 0) {
-      mlfqs_update_load_avg();
-      mlfqs_update_recent_cpu_all(); //thread_foreach(thread_update_recent_cpu_cur, NULL);
-    }
-    if (system_ticks % 4 == 0) {
-      mlfqs_update_priorities();
-      list_sort(&ready_list, thread_priority_less_func, NULL);
-    }
-  }
+  
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -273,23 +242,6 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
-//////////////////////////////////////////////////
-void timer_block(int64_t wakeup_time) {
-  struct thread *cur = thread_current();
-  enum intr_level old_level;
-  
-  ASSERT (!intr_context());
-  
-  old_level = intr_disable();
-  
-  cur->wakeup_time = system_ticks + wakeup_time;
-  
-  list_insert_ordered(&sleep_list, &cur->elem, thread_wakeup_less_func, NULL);
-  
-  thread_block();
-  
-  intr_set_level(old_level);
-}
 
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
@@ -315,78 +267,6 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
-
-//////////////////////////////////////////////////
-bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
-  struct thread *ta = list_entry(a, struct thread, elem);
-  struct thread *tb = list_entry(b, struct thread, elem);
-  
-  return ta->priority > tb->priority;
-}
-
-//////////////////////////////////////////////////
-void thread_unblock (struct thread *t) 
-{
-  ASSERT (is_thread(t));
-  ASSERT (t->status == THREAD_BLOCKED);
-  
-  list_insert_ordered(&ready_list, &t->elem, thread_priority_less_func, NULL);
-  
-  t->status = THREAD_READY;
-}
-
-void mlfqs_update_recent_cpu_cur() {
-  struct thread *cur = thread_current();
-  
-  if (cur != idle_thread)
-    cur->cpu_recent_time = fixpoint_1714_add_int(cur->cpu_recent_time , 1);
-}
-
-void mlfqs_update_recent_cpu (struct thread *t, void *aux UNUSED) {
-  if (t != idle_thread) {
-    // recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice
-    int load_avg_mult_2 = load_avg * 2;
-    int coefficient = fixpoint_1714_div(load_avg_mult_2, fixpoint_1714_add_int(load_avg_mult_2, 1));
-    t->cpu_recent_time = fixpoint_1714_add_int(fixpoint_1714_mul(coefficient, t->cpu_recent_time), t->nice);
-  }
-}
-
-void mlfqs_update_recent_cpu_all () {
-  thread_foreach(mlfqs_update_recent_cpu, NULL);
-}
-
-void mlfqs_update_load_avg () {
-  struct thread *cur = thread_current();
-
-  int ready_threads = list_size(&ready_list);  
-  
-  if (cur != idle_thread)
-    ready_threads += 1;
-  
-  // load_avg = (59/60)*load_avg + (1/60)*ready_threads
-  // a = 59/60
-  // b = 1/60
-  int a = int_to_fixpoint_1714(59) / 60;
-  int b = int_to_fixpoint_1714(1) / 60;
-  load_avg = fixpoint_1714_mul(a, load_avg) + (b * ready_threads);
-}
-
-void mlfqs_update_priority (struct thread *t, void *aux UNUSED) {
-  if (t != idle_thread) {
-    // priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
-    int new_priority = PRI_MAX - fixpoint_1714_to_int_zero(t->cpu_recent_time / 4) - (t->nice * 2);
-    if (new_priority > PRI_MAX)
-      new_priority = PRI_MAX;
-    else if (new_priority < PRI_MIN)
-      new_priority = PRI_MIN;
-    t->priority = new_priority;
-  }
-}
-
-void mlfqs_update_priorities () {
-  thread_foreach(mlfqs_update_priority, NULL);
-}
-
 
 
 
@@ -796,3 +676,117 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+//////////////////////////////////////////////////
+void timer_block(int64_t wakeup_time) {
+  struct thread *cur = thread_current();
+  enum intr_level old_level;
+  
+  ASSERT (!intr_context());
+  
+  old_level = intr_disable();
+  
+  cur->wakeup_time = system_ticks + wakeup_time;
+  
+  list_insert_ordered(&sleep_list, &cur->elem, thread_wakeup_less_func, NULL);
+  
+  thread_block();
+  
+  intr_set_level(old_level);
+}
+
+//////////////////////////////////////////////////
+void thread_wakeup () {
+  while (!list_empty(&sleep_list)) {
+    struct list_elem *temp = list_begin(&sleep_list);
+    struct thread *t = list_entry (temp, struct thread, elem);
+    
+    if (t->wakeup_time > system_ticks)
+      break;
+    else {
+      list_remove(temp);
+      thread_unblock(t);
+    } 
+  }
+}
+
+//////////////////////////////////////////////////
+bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux) {
+  struct thread *ta = list_entry(a, struct thread, elem);
+  struct thread *tb = list_entry(b, struct thread, elem);
+  
+  return ta->wakeup_time < tb->wakeup_time;
+}
+
+//////////////////////////////////////////////////
+bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
+  struct thread *ta = list_entry(a, struct thread, elem);
+  struct thread *tb = list_entry(b, struct thread, elem);
+  
+  return ta->priority > tb->priority;
+}
+
+//////////////////////////////////////////////////
+void thread_unblock (struct thread *t) 
+{
+  ASSERT (is_thread(t));
+  ASSERT (t->status == THREAD_BLOCKED);
+  
+  list_insert_ordered(&ready_list, &t->elem, thread_priority_less_func, NULL);
+  
+  t->status = THREAD_READY;
+}
+
+void mlfqs_update_recent_cpu_cur() {
+  struct thread *cur = thread_current();
+  
+  if (cur != idle_thread)
+    cur->cpu_recent_time = fixpoint_1714_add_int(cur->cpu_recent_time , 1);
+}
+
+void mlfqs_update_recent_cpu (struct thread *t, void *aux UNUSED) {
+  if (t != idle_thread) {
+    // recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice
+    int load_avg_mult_2 = load_avg * 2;
+    int coefficient = fixpoint_1714_div(load_avg_mult_2, fixpoint_1714_add_int(load_avg_mult_2, 1));
+    t->cpu_recent_time = fixpoint_1714_add_int(fixpoint_1714_mul(coefficient, t->cpu_recent_time), t->nice);
+  }
+}
+
+void mlfqs_update_recent_cpu_all () {
+  thread_foreach(mlfqs_update_recent_cpu, NULL);
+}
+
+void mlfqs_update_load_avg () {
+  struct thread *cur = thread_current();
+
+  int ready_threads = list_size(&ready_list);  
+  
+  if (cur != idle_thread)
+    ready_threads += 1;
+  
+  // load_avg = (59/60)*load_avg + (1/60)*ready_threads
+  // a = 59/60
+  // b = 1/60
+  int a = int_to_fixpoint_1714(59) / 60;
+  int b = int_to_fixpoint_1714(1) / 60;
+  load_avg = fixpoint_1714_mul(a, load_avg) + (b * ready_threads);
+}
+
+void mlfqs_update_priority (struct thread *t, void *aux UNUSED) {
+  if (t != idle_thread) {
+    // priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
+    int new_priority = PRI_MAX - fixpoint_1714_to_int_zero(t->cpu_recent_time / 4) - (t->nice * 2);
+    if (new_priority > PRI_MAX)
+      new_priority = PRI_MAX;
+    else if (new_priority < PRI_MIN)
+      new_priority = PRI_MIN;
+    t->priority = new_priority;
+  }
+}
+
+void mlfqs_update_priorities () {
+  thread_foreach(mlfqs_update_priority, NULL);
+}
+
+
