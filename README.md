@@ -120,7 +120,7 @@ O projeto da cadeira de Sistemas Operacionais-CIN015 deve fazer apenas o *Alarm 
    O `avg_load` é a carga média do sistema levando em conta a quantidade de threads em ready_list, sem incluir thread ociosa:
 
 $$
-\text{avg} = \left(\frac{59}{60}\right) \cdot \text{avg} + \left(\frac{1}{60}\right) \cdot \left(\text{tamanho-da-ready-list}\right)
+\text{avg} = \frac{59}{60} \cdot \text{avg} + \frac{1}{60} \cdot \left(\text{tamanho-da-ready-list}\right)
 $$
 
    O `cpu_recent_time` é uma média móvel exponencial, específica de cada thread e que começa em 0, que serve como peso na hora de calcular a prioridade, que consiste em considerar uma função exponencial em que com o passar do temp os cpu-time antigos tenham pesos menores e os mais recentes os pesos maiores; todas as threads devem ter seu recent time recalculados 1 vez por segundo (timer_ticks() % TIMER_FREQ == 0) usando:
