@@ -132,7 +132,7 @@ $$
    O `nice` é específico de cada thread, há funções a se implementar e fazê-lo funcionar corretamente; ele deve estar entre -20 e 20 e vai servir para calcular a prioridade em que quanto mais positivo, menor a prioridade, que será calculada usando o `recent_time` (apenas se ele mudar) para alterar a thread de fila na mlfq, usando a fórmula:
 
 $$
-\text{p} = \mathrm{floor}\left(\text{PriMax} - \left(\frac{\text{RecentCpuTime}}{4}\right) - \left(\text{nice} \cdot 2\right)\right)
+\text{p} = \mathrm{floor}\left(\text{PriMax} - \frac{\text{RecentCpuTime}}{4} - \left(\text{nice} \cdot 2\right)\right)
 $$
 
 ###### Pontos Flutuantes
