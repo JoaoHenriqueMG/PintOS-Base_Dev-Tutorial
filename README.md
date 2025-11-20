@@ -120,18 +120,19 @@ O projeto da cadeira de Sistemas Operacionais-CIN015 deve fazer apenas o *Alarm 
    O `avg_load` é a carga média do sistema levando em conta a quantidade de threads em ready_list, sem incluir thread ociosa:
 
 $$
-avg = (\frac{59}{60}) * avg + (\frac{1}{60}) * (tamanho-da-ready-list)
+\text{avg} = \left(\frac{59}{60}\right) \cdot \text{avg} + \left(\frac{1}{60}\right) \cdot \left(\text{tamanho-da-ready-list}\right)
 $$
 
    O `cpu_recent_time` é uma média móvel exponencial, específica de cada thread e que começa em 0, que serve como peso na hora de calcular a prioridade, que consiste em considerar uma função exponencial em que com o passar do temp os cpu-time antigos tenham pesos menores e os mais recentes os pesos maiores; todas as threads devem ter seu recent time recalculados 1 vez por segundo (timer_ticks() % TIMER_FREQ == 0) usando:
 
 $$
-CpuTime = ( \frac{2 * avg}{2 * avg + 1} * CpuTime + nice) * 100
+\text{CpuTime} = \left(\frac{2 \cdot \text{avg}}{2 \cdot \text{avg} + 1} \cdot \text{CpuTime} + \text{nice}\right) \cdot 100
 $$
+
    O `nice` é específico de cada thread, há funções a se implementar e fazê-lo funcionar corretamente; ele deve estar entre -20 e 20 e vai servir para calcular a prioridade em que quanto mais positivo, menor a prioridade, que será calculada usando o `recent_time` (apenas se ele mudar) para alterar a thread de fila na mlfq, usando a fórmula:
 
 $$
-p = floor(PriMax - (\frac{RecentCpuTime}{4}) - (nice * 2))
+\text{p} = \mathrm{floor}\left(\text{PriMax} - \left(\frac{\text{RecentCpuTime}}{4}\right) - \left(\text{nice} * 2\right)\right)
 $$
 
 ###### Pontos Flutuantes
