@@ -677,7 +677,7 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-//////////////////////////////////////////////////
+// Update the current thread's wakeup_time, insert it into sleep_list in order and block the current thread
 void timer_block(int64_t wakeup_time) {
   struct thread *cur = thread_current();
   enum intr_level old_level;
@@ -695,11 +695,11 @@ void timer_block(int64_t wakeup_time) {
   intr_set_level(old_level);
 }
 
-//////////////////////////////////////////////////
+// Wake up all threads whose wakeup time is less than or equal to system ticks
 void thread_wakeup () {
   while (!list_empty(&sleep_list)) {
     struct list_elem *temp = list_begin(&sleep_list);
-    struct thread *t = list_entry (temp, struct thread, elem);
+    struct thread *t = list_entry(temp, struct thread, elem);
     
     if (t->wakeup_time > system_ticks)
       break;
@@ -710,7 +710,7 @@ void thread_wakeup () {
   }
 }
 
-//////////////////////////////////////////////////
+// Auxiliar compare function for ordering sleep list by wakeup time
 bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux) {
   struct thread *ta = list_entry(a, struct thread, elem);
   struct thread *tb = list_entry(b, struct thread, elem);
@@ -718,7 +718,7 @@ bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *
   return ta->wakeup_time < tb->wakeup_time;
 }
 
-//////////////////////////////////////////////////
+// Auxiliar compare function for ordering ready list by priority
 bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
   struct thread *ta = list_entry(a, struct thread, elem);
   struct thread *tb = list_entry(b, struct thread, elem);
@@ -726,7 +726,7 @@ bool thread_priority_less_func (const struct list_elem *a, const struct list_ele
   return ta->priority > tb->priority;
 }
 
-//////////////////////////////////////////////////
+// Unblocks a thread and inserts it into the ready list in order
 void thread_unblock (struct thread *t) 
 {
   ASSERT (is_thread(t));
@@ -737,6 +737,7 @@ void thread_unblock (struct thread *t)
   t->status = THREAD_READY;
 }
 
+// Increases the current thread's recent_cpu by 1
 void mlfqs_update_recent_cpu_cur() {
   struct thread *cur = thread_current();
   
@@ -744,6 +745,7 @@ void mlfqs_update_recent_cpu_cur() {
     cur->cpu_recent_time = fixpoint_1714_add_int(cur->cpu_recent_time , 1);
 }
 
+// Updates the recent_cpu of thread t by the defined formula
 void mlfqs_update_recent_cpu (struct thread *t, void *aux UNUSED) {
   if (t != idle_thread) {
     // recent_cpu = (2*load_avg)/(2*load_avg + 1) * recent_cpu + nice
@@ -753,10 +755,12 @@ void mlfqs_update_recent_cpu (struct thread *t, void *aux UNUSED) {
   }
 }
 
+// Updates the recent_cpu of all threads
 void mlfqs_update_recent_cpu_all () {
   thread_foreach(mlfqs_update_recent_cpu, NULL);
 }
 
+// Updates the system load average by the defined formula
 void mlfqs_update_load_avg () {
   struct thread *cur = thread_current();
 
@@ -773,19 +777,23 @@ void mlfqs_update_load_avg () {
   load_avg = fixpoint_1714_mul(a, load_avg) + (b * ready_threads);
 }
 
+// Updates the priority of thread t by the defined formula
 void mlfqs_update_priority (struct thread *t, void *aux UNUSED) {
   if (t != idle_thread) {
     // priority = PRI_MAX - (recent_cpu / 4) - (nice * 2)
     int new_priority = PRI_MAX - fixpoint_1714_to_int_zero(t->cpu_recent_time / 4) - (t->nice * 2);
+    
     if (new_priority > PRI_MAX)
       new_priority = PRI_MAX;
     else if (new_priority < PRI_MIN)
       new_priority = PRI_MIN;
+    
     t->priority = new_priority;
   }
 }
 
-void mlfqs_update_priorities () {
+// Updates the priority of all threads
+void mlfqs_update_priorities() {
   thread_foreach(mlfqs_update_priority, NULL);
 }
 
