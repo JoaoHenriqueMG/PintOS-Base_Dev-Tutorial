@@ -268,11 +268,6 @@ thread_block (void)
    it may expect that it can atomically unblock a thread and
    update other data. */
 
-
-
-
-
-
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) 
@@ -466,6 +461,7 @@ int thread_get_recent_cpu (void)
    blocks.  After that, the idle thread never appears in the
    ready list.  It is returned by next_thread_to_run() as a
    special case when the ready list is empty. */
+   
 static void
 idle (void *idle_started_ UNUSED) 
 {

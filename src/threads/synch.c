@@ -119,7 +119,7 @@ sema_up (struct semaphore *sema)
     struct thread *t = list_entry (list_pop_front (&sema->waiters), struct thread, elem); 
     thread_unblock (t);
     
-    // garante que a thread atual vai ceder a CPU se a thread desbloqueada tiver maior prioridade
+    // To ensure that a current thread will yield the CPU if an unlocked thread has higher priority.
     if (thread_mlfqs && t->priority > thread_current()->priority)
       yielding = true;
   }
@@ -128,7 +128,7 @@ sema_up (struct semaphore *sema)
   
   intr_set_level (old_level);
   
-  // preempta a thread atual se necessario
+  // preempt the current thread if necessary.
   if (yielding)
     thread_yield();
 }
