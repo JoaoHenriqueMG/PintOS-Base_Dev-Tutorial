@@ -399,8 +399,10 @@ void thread_set_nice (int nice) {
   if (!list_empty(&ready_list)) {
     if (cur->priority < list_entry(list_begin(&ready_list), struct thread, elem)->priority) yield_needed = true; 
   }
-  if (yield_needed) thread_yield();
+
   intr_set_level(old_level);
+
+  if (yield_needed) thread_yield();
 }
 
 /* Returns the current thread's nice value. */
