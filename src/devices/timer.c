@@ -171,18 +171,18 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
+  // MLFQS updates
   if (thread_mlfqs) {    
     mlfqs_update_recent_cpu_cur();
 
     // Every second
     if (ticks % TIMER_FREQ == 0) {
       mlfqs_update_load_avg();
-      mlfqs_update_recent_cpu_all(); //thread_foreach(thread_update_recent_cpu_cur, NULL);
+      mlfqs_update_recent_cpu_all();
     }
 
-    if (ticks % 4 == 0) {
+    if (ticks % 4 == 0)
       mlfqs_update_priorities();
-    }
   }
 }
 

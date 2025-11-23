@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include <float_1714.h>
+#include "../lib/kernel/fixpoint_1714.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -92,7 +92,7 @@ struct thread
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t wakeup_time;
     int nice;
-    int64_t cpu_recent_time;
+    int cpu_recent_time;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
