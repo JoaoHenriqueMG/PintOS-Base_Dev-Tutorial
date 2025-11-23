@@ -84,17 +84,17 @@ static tid_t allocate_tid (void);
 // the news methods implemented below
 
 void timer_block(int64_t time);
-void thread_wakeup();
+void thread_wakeup(void);
 
 bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux);
 bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux);
 
-void mlfqs_update_recent_cpu_cur();
+void mlfqs_update_recent_cpu_cur(void);
 void mlfqs_update_recent_cpu(struct thread *t, void *aux UNUSED);
-void mlfqs_update_recent_cpu_all();
-void mlfqs_update_load_avg();
+void mlfqs_update_recent_cpu_all(void);
+void mlfqs_update_load_avg(void);
 void mlfqs_update_priority(struct thread *t, void *aux UNUSED);
-void mlfqs_update_priorities();
+void mlfqs_update_priorities(void);
 
 
 /* Initializes the threading system by transforming the code
@@ -156,8 +156,6 @@ thread_tick (void)
 {
   struct thread *t = thread_current ();
   system_ticks++;
-
-  
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -418,9 +416,7 @@ int thread_get_nice (void) {
 
 /* Returns 100 times the system load average. */
 int thread_get_load_avg (void) 
-{
-  struct thread *cur = thread_current();
-  
+{ 
   enum intr_level old_level;
   
   ASSERT (!intr_context());
@@ -540,16 +536,16 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   
-  if (thread_mlfqs)
+  if (thread_mlfqs) {
     if (t == initial_thread) {
       t->nice = 0;
       t->cpu_recent_time = 0;
-    }
-    else {
+    } else {
       struct thread *cur = thread_current();
       t->nice = cur->nice;
       t->cpu_recent_time = cur->cpu_recent_time;
     }
+  }
 
   t->magic = THREAD_MAGIC;
 
@@ -694,7 +690,7 @@ void timer_block(int64_t wakeup_time) {
 }
 
 // Wake up all threads whose wakeup time is less than or equal to system ticks
-void thread_wakeup () {
+void thread_wakeup (void) {
   while (!list_empty(&sleep_list)) {
     struct list_elem *temp = list_begin(&sleep_list);
     struct thread *t = list_entry(temp, struct thread, elem);
@@ -709,7 +705,7 @@ void thread_wakeup () {
 }
 
 // Auxiliar compare function for ordering sleep list by wakeup time
-bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
   struct thread *ta = list_entry(a, struct thread, elem);
   struct thread *tb = list_entry(b, struct thread, elem);
   
@@ -717,7 +713,7 @@ bool thread_wakeup_less_func(const struct list_elem *a, const struct list_elem *
 }
 
 // Auxiliar compare function for ordering ready list by priority
-bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux) {
+bool thread_priority_less_func (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
   struct thread *ta = list_entry(a, struct thread, elem);
   struct thread *tb = list_entry(b, struct thread, elem);
   
@@ -736,7 +732,7 @@ void thread_unblock (struct thread *t)
 }
 
 // Increases the current thread's recent_cpu by 1
-void mlfqs_update_recent_cpu_cur() {
+void mlfqs_update_recent_cpu_cur(void) {
   struct thread *cur = thread_current();
   
   if (cur != idle_thread)
@@ -754,12 +750,12 @@ void mlfqs_update_recent_cpu (struct thread *t, void *aux UNUSED) {
 }
 
 // Updates the recent_cpu of all threads
-void mlfqs_update_recent_cpu_all () {
+void mlfqs_update_recent_cpu_all (void) {
   thread_foreach(mlfqs_update_recent_cpu, NULL);
 }
 
 // Updates the system load average by the defined formula
-void mlfqs_update_load_avg () {
+void mlfqs_update_load_avg (void) {
   struct thread *cur = thread_current();
 
   int ready_threads = list_size(&ready_list);  
@@ -791,7 +787,7 @@ void mlfqs_update_priority (struct thread *t, void *aux UNUSED) {
 }
 
 // Updates the priority of all threads
-void mlfqs_update_priorities() {
+void mlfqs_update_priorities(void) {
   thread_foreach(mlfqs_update_priority, NULL);
 }
 

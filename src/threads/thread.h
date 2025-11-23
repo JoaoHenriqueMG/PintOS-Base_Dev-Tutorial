@@ -114,6 +114,7 @@ extern bool thread_mlfqs;
 void thread_init (void);
 void thread_start (void);
 
+
 void thread_tick (void);
 void thread_print_stats (void);
 
@@ -121,8 +122,16 @@ typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void timer_block(int64_t time);
+void thread_wakeup(void);
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+void mlfqs_update_recent_cpu_cur(void);
+void mlfqs_update_recent_cpu(struct thread *t, void *aux UNUSED);
+void mlfqs_update_recent_cpu_all(void);
+void mlfqs_update_load_avg(void);
+void mlfqs_update_priority(struct thread *t, void *aux UNUSED);
+void mlfqs_update_priorities(void);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
